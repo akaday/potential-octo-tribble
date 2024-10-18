@@ -109,7 +109,7 @@
     "@types/node": "^22.7.5",
 
     "@sinonjs/fake-timers": "^13.0.2",
-    "@types/node": "^18.0.3",
+    "@types/node": "^22.7.6",
 
     "abort-controller": "^3.0.0",
     "borp": "^0.18.0",
