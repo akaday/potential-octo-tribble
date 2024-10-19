@@ -1650,21 +1650,18 @@ int tls_parse_stoc_alpn(SSL *s, PACKET *pkt, unsigned int context, X509 *x,
 
     OPENSSL_free(s->s3.alpn_selected);
     s->s3.alpn_selected = NULL;
-    s->s3.alpn_selected = OPENSSL_malloc(len);
-    if (s->s3.alpn_selected == NULL) {
-        s->s3.alpn_selected_len = 0;
-        SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
-        return 0;
-    }
-    if (!PACKET_copy_bytes(pkt, s->s3.alpn_selected, len)) {
-        SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_R_BAD_EXTENSION);
-        return 0;
-    }
-    s->s3.alpn_selected_len = len;
-
-    if (s->s3.alpn_selected == NULL) {
-        SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
-        return 0;
+    if (len > 0) {
+        s->s3.alpn_selected = OPENSSL_malloc(len);
+        if (s->s3.alpn_selected == NULL) {
+            s->s3.alpn_selected_len = 0;
+            SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+            return 0;
+        }
+        if (!PACKET_copy_bytes(pkt, s->s3.alpn_selected, len)) {
+            SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_R_BAD_EXTENSION);
+            return 0;
+        }
+        s->s3.alpn_selected_len = len;
     }
 
     if (s->session->ext.alpn_selected == NULL
