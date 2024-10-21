@@ -1671,6 +1671,11 @@ int tls_parse_stoc_alpn(SSL *s, PACKET *pkt, unsigned int context, X509 *x,
         /* ALPN not consistent with the old session so cannot use early_data */
         s->ext.early_data_ok = 0;
     }
+
+    if (s->s3.alpn_selected == NULL) {
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+        return 0;
+    }
     if (!s->hit) {
         /*
          * This is a new session and so alpn_selected should have been
