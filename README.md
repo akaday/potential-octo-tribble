@@ -7,7 +7,7 @@ Your project description here.
 ```sh
 npm install
 let enhance this node
-Copilot
+t
 Let’s supercharge your potential-octo-tribble repository! Here are some suggestions to add more power:
 
 Feature Ideas:
