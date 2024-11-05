@@ -1610,37 +1610,63 @@ int tls_parse_stoc_alpn(SSL *s, PACKET *pkt, unsigned int context, X509 *x,
     int valid = 0;
 
     /* We must have requested it. */
-    if (!s->s3.alpn_sent) {
-        SSLfatal(s, SSL_AD_UNSUPPORTED_EXTENSION, SSL_R_BAD_EXTENSION);
-        return 0;
-    }
-    /*-
-     * The extension data consists of:
-     *   uint16 list_length
-     *   uint8 proto_length;
-     *   uint8 proto[proto_length];
-     */
-    if (!PACKET_get_net_2_len(pkt, &len)
-        || PACKET_remaining(pkt) != len || !PACKET_get_1_len(pkt, &len)
-        || PACKET_remaining(pkt) != len) {
-        SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_R_BAD_EXTENSION);
-        return 0;
-    }
+   if (!s->s3.alpn_sent) {
+    SSLfatal(s, SSL_AD_UNSUPPORTED_EXTENSION, SSL_R_BAD_EXTENSION);
+    return 0;
+}
 
-    /* It must be a protocol that we sent */
-    if (!PACKET_buf_init(&confpkt, s->ext.alpn, s->ext.alpn_len)) {
+/*-
+ * The extension data consists of:
+ *   uint16 list_length
+ *   uint8 proto_length;
+ *   uint8 proto[proto_length];
+ */
+if (!PACKET_get_net_2_len(pkt, &len)
+    || PACKET_remaining(pkt) != len || !PACKET_get_1_len(pkt, &len)
+    || PACKET_remaining(pkt) != len) {
+    SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_R_BAD_EXTENSION);
+    return 0;
+}
+
+/* It must be a protocol that we sent */
+if (!PACKET_buf_init(&confpkt, s->ext.alpn, s->ext.alpn_len)) {
+    SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
+    return 0;
+}
+while (PACKET_get_length_prefixed_1(&confpkt, &protpkt)) {
+    if (PACKET_remaining(&protpkt) != len)
+        continue;
+    if (memcmp(PACKET_data(pkt), PACKET_data(&protpkt), len) == 0) {
+        /* Valid protocol found */
+        valid = 1;
+        break;
+    }
+}
+
+if (!valid) {
+    /* The protocol sent from the server does not match one we advertised */
+    SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_R_BAD_EXTENSION);
+    return 0;
+}
+
+OPENSSL_free(s->s3.alpn_selected);
+s->s3.alpn_selected = NULL;
+if (len > 0) {
+    unsigned char *new_alpn_selected = OPENSSL_malloc(len);
+    if (new_alpn_selected == NULL) {
+        s->s3.alpn_selected_len = 0;
         SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
         return 0;
     }
-    while (PACKET_get_length_prefixed_1(&confpkt, &protpkt)) {
-        if (PACKET_remaining(&protpkt) != len)
-            continue;
-        if (memcmp(PACKET_data(pkt), PACKET_data(&protpkt), len) == 0) {
-            /* Valid protocol found */
-            valid = 1;
-            break;
-        }
+    if (!PACKET_copy_bytes(pkt, new_alpn_selected, len)) {
+        OPENSSL_free(new_alpn_selected);  // Free allocated memory on failure
+        SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_R_BAD_EXTENSION);
+        return 0;
     }
+    s->s3.alpn_selected = new_alpn_selected;  // Assign new allocated memory
+    s->s3.alpn_selected_len = len;
+}
+
 
     if (!valid) {
         /* The protocol sent from the server does not match one we advertised */
