@@ -12,6 +12,15 @@
 #include "internal/cryptlib.h"
 #include "statem_local.h"
 
+#define WPACKET_EXTENSION(pkt, type, subpacket_code) \
+    if (!WPACKET_put_bytes_u16(pkt, type) \
+            || !WPACKET_start_sub_packet_u16(pkt) \
+            || !(subpacket_code) \
+            || !WPACKET_close(pkt)) { \
+        SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR); \
+        return EXT_RETURN_FAIL; \
+    }
+
 EXT_RETURN tls_construct_ctos_renegotiate(SSL *s, WPACKET *pkt,
                                           unsigned int context, X509 *x,
                                           size_t chainidx)
@@ -20,14 +29,9 @@ EXT_RETURN tls_construct_ctos_renegotiate(SSL *s, WPACKET *pkt,
     if (!s->renegotiate)
         return EXT_RETURN_NOT_SENT;
 
-    if (!WPACKET_put_bytes_u16(pkt, TLSEXT_TYPE_renegotiate)
-            || !WPACKET_start_sub_packet_u16(pkt)
-            || !WPACKET_sub_memcpy_u8(pkt, s->s3.previous_client_finished,
-                               s->s3.previous_client_finished_len)
-            || !WPACKET_close(pkt)) {
-        SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
-        return EXT_RETURN_FAIL;
-    }
+    WPACKET_EXTENSION(pkt, TLSEXT_TYPE_renegotiate,
+                      WPACKET_sub_memcpy_u8(pkt, s->s3.previous_client_finished,
+                                            s->s3.previous_client_finished_len))
 
     return EXT_RETURN_SENT;
 }
@@ -40,19 +44,12 @@ EXT_RETURN tls_construct_ctos_server_name(SSL *s, WPACKET *pkt,
         return EXT_RETURN_NOT_SENT;
 
     /* Add TLS extension servername to the Client Hello message */
-    if (!WPACKET_put_bytes_u16(pkt, TLSEXT_TYPE_server_name)
-               /* Sub-packet for server_name extension */
-            || !WPACKET_start_sub_packet_u16(pkt)
-               /* Sub-packet for servername list (always 1 hostname)*/
-            || !WPACKET_start_sub_packet_u16(pkt)
-            || !WPACKET_put_bytes_u8(pkt, TLSEXT_NAMETYPE_host_name)
-            || !WPACKET_sub_memcpy_u16(pkt, s->ext.hostname,
-                                       strlen(s->ext.hostname))
-            || !WPACKET_close(pkt)
-            || !WPACKET_close(pkt)) {
-        SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
-        return EXT_RETURN_FAIL;
-    }
+    WPACKET_EXTENSION(pkt, TLSEXT_TYPE_server_name,
+                      WPACKET_start_sub_packet_u16(pkt) &&
+                      WPACKET_put_bytes_u8(pkt, TLSEXT_NAMETYPE_host_name) &&
+                      WPACKET_sub_memcpy_u16(pkt, s->ext.hostname,
+                                             strlen(s->ext.hostname)) &&
+                      WPACKET_close(pkt))
 
     return EXT_RETURN_SENT;
 }
@@ -66,18 +63,8 @@ EXT_RETURN tls_construct_ctos_maxfragmentlen(SSL *s, WPACKET *pkt,
         return EXT_RETURN_NOT_SENT;
 
     /* Add Max Fragment Length extension if client enabled it. */
-    /*-
-     * 4 bytes for this extension type and extension length
-     * 1 byte for the Max Fragment Length code value.
-     */
-    if (!WPACKET_put_bytes_u16(pkt, TLSEXT_TYPE_max_fragment_length)
-            /* Sub-packet for Max Fragment Length extension (1 byte) */
-            || !WPACKET_start_sub_packet_u16(pkt)
-            || !WPACKET_put_bytes_u8(pkt, s->ext.max_fragment_len_mode)
-            || !WPACKET_close(pkt)) {
-        SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
-        return EXT_RETURN_FAIL;
-    }
+    WPACKET_EXTENSION(pkt, TLSEXT_TYPE_max_fragment_length,
+                      WPACKET_put_bytes_u8(pkt, s->ext.max_fragment_len_mode))
 
     return EXT_RETURN_SENT;
 }
@@ -90,19 +77,12 @@ EXT_RETURN tls_construct_ctos_srp(SSL *s, WPACKET *pkt, unsigned int context,
     if (s->srp_ctx.login == NULL)
         return EXT_RETURN_NOT_SENT;
 
-    if (!WPACKET_put_bytes_u16(pkt, TLSEXT_TYPE_srp)
-               /* Sub-packet for SRP extension */
-            || !WPACKET_start_sub_packet_u16(pkt)
-            || !WPACKET_start_sub_packet_u8(pkt)
-               /* login must not be zero...internal error if so */
-            || !WPACKET_set_flags(pkt, WPACKET_FLAGS_NON_ZERO_LENGTH)
-            || !WPACKET_memcpy(pkt, s->srp_ctx.login,
-                               strlen(s->srp_ctx.login))
-            || !WPACKET_close(pkt)
-            || !WPACKET_close(pkt)) {
-        SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
-        return EXT_RETURN_FAIL;
-    }
+    WPACKET_EXTENSION(pkt, TLSEXT_TYPE_srp,
+                      WPACKET_start_sub_packet_u8(pkt) &&
+                      WPACKET_set_flags(pkt, WPACKET_FLAGS_NON_ZERO_LENGTH) &&
+                      WPACKET_memcpy(pkt, s->srp_ctx.login,
+                                     strlen(s->srp_ctx.login)) &&
+                      WPACKET_close(pkt))
 
     return EXT_RETURN_SENT;
 }
@@ -170,14 +150,8 @@ EXT_RETURN tls_construct_ctos_ec_pt_formats(SSL *s, WPACKET *pkt,
     /* Add TLS extension ECPointFormats to the ClientHello message */
     tls1_get_formatlist(s, &pformats, &num_formats);
 
-    if (!WPACKET_put_bytes_u16(pkt, TLSEXT_TYPE_ec_point_formats)
-               /* Sub-packet for formats extension */
-            || !WPACKET_start_sub_packet_u16(pkt)
-            || !WPACKET_sub_memcpy_u8(pkt, pformats, num_formats)
-            || !WPACKET_close(pkt)) {
-        SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
-        return EXT_RETURN_FAIL;
-    }
+    WPACKET_EXTENSION(pkt, TLSEXT_TYPE_ec_point_formats,
+                      WPACKET_sub_memcpy_u8(pkt, pformats, num_formats))
 
     return EXT_RETURN_SENT;
 }
@@ -412,15 +386,9 @@ EXT_RETURN tls_construct_ctos_alpn(SSL *s, WPACKET *pkt, unsigned int context,
     if (s->ext.alpn == NULL || !SSL_IS_FIRST_HANDSHAKE(s))
         return EXT_RETURN_NOT_SENT;
 
-    if (!WPACKET_put_bytes_u16(pkt,
-                TLSEXT_TYPE_application_layer_protocol_negotiation)
-               /* Sub-packet ALPN extension */
-            || !WPACKET_start_sub_packet_u16(pkt)
-            || !WPACKET_sub_memcpy_u16(pkt, s->ext.alpn, s->ext.alpn_len)
-            || !WPACKET_close(pkt)) {
-        SSLfatal(s, SSL_AD_INTERNAL_ERROR, ERR_R_INTERNAL_ERROR);
-        return EXT_RETURN_FAIL;
-    }
+    WPACKET_EXTENSION(pkt, TLSEXT_TYPE_application_layer_protocol_negotiation,
+                      WPACKET_sub_memcpy_u16(pkt, s->ext.alpn, s->ext.alpn_len))
+
     s->s3.alpn_sent = 1;
 
     return EXT_RETURN_SENT;

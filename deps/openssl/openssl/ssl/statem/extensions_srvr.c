@@ -36,6 +36,15 @@
                          + MAX_COOKIE_SIZE)
 
 /*
+ * Macro for repetitive PACKET operations in tls_parse_stoc_* functions
+ */
+#define PARSE_PACKET(pkt, len, data, err_code) \
+    if (!PACKET_get_1_len(pkt, &len) || !PACKET_get_bytes(pkt, &data, len)) { \
+        SSLfatal(s, SSL_AD_DECODE_ERROR, err_code); \
+        return 0; \
+    }
+
+/*
  * Parse the client's renegotiation binding and abort if it's not right
  */
 int tls_parse_ctos_renegotiate(SSL *s, PACKET *pkt, unsigned int context,
@@ -44,12 +53,7 @@ int tls_parse_ctos_renegotiate(SSL *s, PACKET *pkt, unsigned int context,
     unsigned int ilen;
     const unsigned char *data;
 
-    /* Parse the length byte */
-    if (!PACKET_get_1(pkt, &ilen)
-        || !PACKET_get_bytes(pkt, &data, ilen)) {
-        SSLfatal(s, SSL_AD_DECODE_ERROR, SSL_R_RENEGOTIATION_ENCODING_ERR);
-        return 0;
-    }
+    PARSE_PACKET(pkt, ilen, data, SSL_R_RENEGOTIATION_ENCODING_ERR)
 
     /* Check that the extension matches */
     if (ilen != s->s3.previous_client_finished_len) {
