@@ -102,7 +102,7 @@
     "prepare": "husky && node ./scripts/platform-shell.js"
   },
   "devDependencies": {
-    "@fastify/busboy": "3.1.0",
+    "@fastify/busboy": "3.1.1",
     "@matteo.collina/tspl": "^0.1.1",
 
     "@sinonjs/fake-timers": "^11.1.0",
